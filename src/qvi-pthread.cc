@@ -1,6 +1,6 @@
 /* -*- Mode: C++; c-basic-offset:4; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2024      Triad National Security, LLC
+ * Copyright (c) 2024-2025 Triad National Security, LLC
  *                         All rights reserved.
  *
  * This file is part of the quo-vadis project. See the LICENSE file at the
@@ -33,7 +33,7 @@ qvi_pthread_group::qvi_pthread_group(
     */
 
     m_data_g = new qvi_bbuff *[m_size]();
-    for(int i = 0 ; i < group_size ; i++){
+    for (int i = 0 ; i < group_size ; i++) {
         const int rc = qvi_bbuff_new(&m_data_g[i]);
         if (qvi_unlikely(rc != 0)) throw qvi_runtime_error();
     }
@@ -47,7 +47,7 @@ qvi_pthread_group::call_first_from_pthread_create(
 ) {
     const pid_t mytid = qvi_gettid();
     auto args = (qvi_pthread_group_pthread_create_args_s *)arg;
-    qvi_pthread_group_t *const group = args->group;
+    qvi_pthread_group *const group = args->group;
     const qvi_pthread_routine_fun_ptr_t thread_routine = args->throutine;
     void *const th_routine_argp = args->throutine_argp;
     // Let the threads add their TIDs to the vector.
@@ -126,12 +126,7 @@ int
 qvi_pthread_group::rank(void)
 {
     std::lock_guard<std::mutex> guard(m_mutex);
-
-    if(m_tid2rank.empty()){
-        fprintf(stdout,"[%i]=========== Empty map ! %s @ %i\n",qvi_gettid(),__FILE__,__LINE__);
-        return -111;
-    }
-    
+    assert(!m_tid2rank.empty());
     return m_tid2rank.at(qvi_gettid());
 }
 
@@ -139,6 +134,7 @@ qvi_task *
 qvi_pthread_group::task(void)
 {
     std::lock_guard<std::mutex> guard(m_mutex);
+    assert(!m_tid2task.empty());
     return m_tid2task.at(qvi_gettid());
 }
 
@@ -158,17 +154,17 @@ qvi_pthread_group::m_subgroup_info(
     int key,
     qvi_subgroup_info *sginfo
 ) {
-    int rank = qvi_pthread_group::rank();
-    int master_rank = 0; // Choosing 0 as master.
+    const int master_rank = 0;
+    const int my_rank = qvi_pthread_group::rank();
     // Gather colors and keys from ALL threads.
-    m_ckrs[rank].color = color;
-    m_ckrs[rank].key   = key;
-    m_ckrs[rank].rank  = rank;
+    m_ckrs[my_rank].color = color;
+    m_ckrs[my_rank].key = key;
+    m_ckrs[my_rank].rank = my_rank;
     // Barrier to be sure that all threads have contributed their values.
     pthread_barrier_wait(&m_barrier);
     // Since these data are shared, only the master thread has to sort them.
     // The same goes for calculating the number of distinct colors provided.
-    if(rank == master_rank){
+    if (my_rank == master_rank) {
         // Sort the color/key/rank array. First according to color, then by key,
         // but in the same color realm. If color and key are identical, sort by
         // the rank from given group.
@@ -180,7 +176,7 @@ qvi_pthread_group::m_subgroup_info(
         for (int i = 0; i < m_size; ++i) {
             color_set.insert(m_ckrs[i].color);
         }
-        m_ckrs[rank].ncolors = color_set.size();
+        m_ckrs[my_rank].ncolors = color_set.size();
     }
     //All threads wait for the number of colors to be computed.
     pthread_barrier_wait(&m_barrier);
@@ -194,7 +190,7 @@ qvi_pthread_group::m_subgroup_info(
         // Else we found the start of my color group.
         const int current_color = m_ckrs[i].color;
         for (int j = i; j < m_size && current_color == m_ckrs[j].color; ++j) {
-            if (m_ckrs[j].rank == rank) {
+            if (m_ckrs[j].rank == my_rank) {
                 sginfo->rank = group_rank;
             }
             group_size++;
@@ -210,9 +206,9 @@ int
 qvi_pthread_group::split(
     int color,
     int key,
-    qvi_pthread_group_t **child
+    qvi_pthread_group **child
 ) {
-    qvi_pthread_group_t *ichild = nullptr;
+    qvi_pthread_group *ichild = nullptr;
 
     fprintf(stdout,"[%i] ==============  pthread group split with color = %i, key = %i |  %s @ %i\n",qvi_gettid(),color, key,
             __FILE__,__LINE__);            
@@ -240,13 +236,13 @@ int
 qvi_pthread_group::gather(
     qvi_bbuff *txbuff,
     int,
-    qvi_alloc_type_t *shared_alloc,
+    qvi_bbuff_alloc_type_t *alloc_type,
     qvi_bbuff ***rxbuffs
 ) {
     const int rc = qvi_bbuff_copy(*txbuff, m_data_g[rank()]);
     // Need to ensure that all threads have contributed to m_data_g
     pthread_barrier_wait(&m_barrier);
-    *shared_alloc = ALLOC_SHARED_GLOBAL;
+    *alloc_type = QVI_BBUFF_ALLOC_SHARED_GLOBAL;
 
     if (qvi_unlikely(rc != QV_SUCCESS)) {
         *rxbuffs = nullptr;

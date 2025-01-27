@@ -2,7 +2,7 @@
 
 #include "quo-vadis-mpi.h"
 #include "quo-vadis-pthread.h"
-#include "qvi-test-common.h"
+#include "common-test-utils.h"
 
 typedef struct {
     qv_scope_t *scope;
@@ -14,41 +14,41 @@ thread_work(
     void *arg
 ) {
     char const *ers = NULL;
-    const pid_t tid = qvi_test_gettid();
+    const pid_t tid = ctu_gettid();
     thargs_t *thargs = (thargs_t *)arg;
 
     qv_scope_t *scope = thargs->scope;
     if (thargs->answer != 42) {
         ers = "user arguments not forwarded!";
-        qvi_test_panic("%s", ers);
+        ctu_panic("%s", ers);
     }
 
     int rank = 0;
     int rc = qv_scope_group_rank(scope, &rank);
     if (rc != QV_SUCCESS) {
         ers = "qv_scope_group_rank failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
-    qvi_test_scope_report(scope, "thread_scope_in_thread_routine");
-    qvi_test_emit_task_bind(scope);
+    ctu_scope_report(scope, "thread_scope_in_thread_routine");
+    ctu_emit_task_bind(scope);
 
-    fprintf(stdout,"[%d] ============ Thread %d splitting in two pieces\n", tid, rank);
+    printf("[%d] ============ Thread %d splitting in two pieces\n", tid, rank);
+
     qv_scope_t *pthread_subscope = NULL;
     rc = qv_scope_split(scope, 2, rank, &pthread_subscope);
     if (rc != QV_SUCCESS) {
         ers = "qv_scope_split failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
-    qvi_test_scope_report(pthread_subscope, "thread_subscope");
-    qvi_test_emit_task_bind(pthread_subscope);
-
+    ctu_scope_report(pthread_subscope, "thread_subscope");
+    ctu_emit_task_bind(pthread_subscope);
 
     rc = qv_scope_free(pthread_subscope);
     if (rc != QV_SUCCESS) {
         ers = "qv_scope_free failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
     return NULL;
@@ -58,26 +58,31 @@ int
 main(void)
 {
     char const *ers = NULL;
-    const pid_t tid = qvi_test_gettid();
+    const pid_t tid = ctu_gettid();
     int wrank, wsize;
 
     int rc = MPI_Init(NULL, NULL);
     if (rc != MPI_SUCCESS) {
         ers = "MPI_Init() failed";
-        qvi_test_panic("%s (rc=%d)", ers, rc);
+        ctu_panic("%s (rc=%d)", ers, rc);
     }
 
     MPI_Comm comm = MPI_COMM_WORLD;
     rc = MPI_Comm_size(comm, &wsize);
     if (rc != MPI_SUCCESS) {
         ers = "MPI_Comm_size() failed";
-        qvi_test_panic("%s (rc=%d)", ers, rc);
+        ctu_panic("%s (rc=%d)", ers, rc);
+    }
+    // TODO: As Edgar pointed out, this will work only in the single process
+    // case. The mpi_scope needs to be split to get a new single MPI scope.
+    if (wsize != 1) {
+        ctu_panic("!!! This test works only with one MPI process!");
     }
 
     rc = MPI_Comm_rank(comm, &wrank);
     if (rc != MPI_SUCCESS) {
         ers = "MPI_Comm_rank() failed";
-        qvi_test_panic("%s (rc=%d)", ers, rc);
+        ctu_panic("%s (rc=%d)", ers, rc);
     }
 
     if (wrank == 0) {
@@ -88,24 +93,18 @@ main(void)
     rc = qv_mpi_scope_get(comm, QV_SCOPE_JOB, &mpi_scope);
     if (rc != QV_SUCCESS) {
         ers = "qv_scope_get() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
     int ncores = 0;
     rc = qv_scope_nobjs(mpi_scope, QV_HW_OBJ_CORE, &ncores);
     if (rc != QV_SUCCESS) {
         ers = "qv_scope_nobjs() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
-    qvi_test_scope_report(mpi_scope, "mpi_scope");
-    qvi_test_emit_task_bind(mpi_scope);
-
-    //As Edgar pointed out, this will work only in the
-    //single process case.
-    //The mpi_scope need to be plsit in order to get
-    //a new mpi_single_process_scope
-
+    ctu_scope_report(mpi_scope, "mpi_scope");
+    ctu_emit_task_bind(mpi_scope);
     //
     // Test qv_pthread_scope_split
     //
@@ -114,30 +113,33 @@ main(void)
     int stride = 1;
     int colors[nthreads];
 
-    printf("[%d] Testing thread_scope_split (nthreads=%i, npieces=%i)\n", tid, nthreads, npieces);
+    printf(
+        "[%d] Testing thread_scope_split (nthreads=%d, npieces=%d)\n",
+        tid, nthreads, npieces
+    );
 
     for (int i = 0 ; i < nthreads ; i++) {
         colors[i] = i % npieces;
     }
 
-    fprintf(stdout,"Array values :");
+    printf("Manual values: ");
     for (int i = 0 ; i < nthreads ; i++) {
-        fprintf(stdout,"val[%i]: %i |",i,colors[i]);
+        printf("val[%i]:%i | ",i,colors[i]);
     }
-    fprintf(stdout,"\n");
+    printf("\n");
 
-    rc = qv_pthread_colors_fill(colors, nthreads, QV_POLICY_PACKED, stride, ncores, npieces);
+    rc = qv_pthread_colors_fill(colors, nthreads, QV_POLICY_PACKED, stride, npieces);
+
     if (rc != QV_SUCCESS) {
         ers = "qv_pthread_colors_fill() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
-    fprintf(stdout,"Array values :");
+    fprintf(stdout,"Filled values: ");
     for (int i = 0 ; i < nthreads ; i++) {
-        fprintf(stdout,"val[%i]: %i |",i,colors[i]);
+        fprintf(stdout,"val[%i]:%i | ",i,colors[i]);
     }
     fprintf(stdout,"\n");
-
 
     qv_scope_t **th_scopes = NULL;
     rc = qv_pthread_scope_split(
@@ -145,7 +147,7 @@ main(void)
     );
     if (rc != QV_SUCCESS) {
         ers = "qv_pthread_scope_split() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
     thargs_t thargs[nthreads];
@@ -163,7 +165,7 @@ main(void)
         );
         if (ptrc != 0) {
             ers = "qv_pthread_create() failed";
-            qvi_test_panic("%s (rc=%s)", ers, strerror(rc));
+            ctu_panic("%s (rc=%s)", ers, strerror(rc));
         }
     }
 
@@ -179,7 +181,7 @@ main(void)
     rc = qv_pthread_scopes_free(nthreads, th_scopes);
     if (rc != QV_SUCCESS) {
         ers = "qv_pthread_scope_free() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
 #if 0
@@ -199,11 +201,10 @@ main(void)
     }
     fprintf(stdout,"\n");
 
-
-    rc = qv_pthread_colors_fill(colors2, nthreads, QV_POLICY_PACKED, stride, ncores, ncores);
+    rc = qv_pthread_colors_fill(colors2, nthreads, QV_POLICY_PACKED, stride, ncores);
     if (rc != QV_SUCCESS) {
         ers = "qv_pthread_colors_fill() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
     fprintf(stdout,"Array values :");
@@ -217,7 +218,7 @@ main(void)
     );
     if (rc != QV_SUCCESS) {
         ers = "qv_pthread_scope_split_at() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
     thargs_t thargs2[nthreads];
@@ -233,7 +234,7 @@ main(void)
         );
         if (ptrc != 0) {
             ers = "qv_pthread_create() failed";
-            qvi_test_panic("%s (rc=%s)", ers, strerror(rc));
+            ctu_panic("%s (rc=%s)", ers, strerror(rc));
         }
     }
 
@@ -249,13 +250,13 @@ main(void)
     rc = qv_pthread_scopes_free(nthreads, th_scopes);
     if (rc != QV_SUCCESS) {
         ers = "qv_pthread_scope_free() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 #endif
     rc = qv_scope_free(mpi_scope);
     if (rc != QV_SUCCESS) {
         ers = "qv_scope_free() failed";
-        qvi_test_panic("%s (rc=%s)", ers, qv_strerr(rc));
+        ctu_panic("%s (rc=%s)", ers, qv_strerr(rc));
     }
 
     MPI_Finalize();

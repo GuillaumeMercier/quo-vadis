@@ -1,6 +1,6 @@
 /* -*- Mode: C++; c-basic-offset:4; indent-tabs-mode:nil -*- */
 /*
- * Copyright (c) 2020-2024 Triad National Security, LLC
+ * Copyright (c) 2020-2025 Triad National Security, LLC
  *                         All rights reserved.
  *
  * This file is part of the quo-vadis project. See the LICENSE file at the
@@ -21,7 +21,7 @@
 
 struct qvi_group_pthread : public qvi_group {
     /** Underlying group instance. */
-    qvi_pthread_group_t *thgroup = nullptr;
+    qvi_pthread_group *thgroup = nullptr;
     /** Constructor. */
     qvi_group_pthread(void) = default;
     /** Constructor. */
@@ -88,11 +88,11 @@ struct qvi_group_pthread : public qvi_group {
     gather(
         qvi_bbuff *txbuff,
         int root,
-        qvi_alloc_type_t  *shared,
+        qvi_bbuff_alloc_type_t *alloc_type,
         qvi_bbuff ***rxbuffs
     ) {
         return thgroup->gather(
-           txbuff, root, shared, rxbuffs
+           txbuff, root, alloc_type, rxbuffs
         );
     }
 

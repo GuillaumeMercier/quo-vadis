@@ -1,6 +1,6 @@
 /* -*- Mode: C++; c-basic-offset:4; indent-tabs-mode:nil -*- */
 /*qv_policy_t
- * Copyright (c) 2022-2024 Triad National Security, LLC
+ * Copyright (c) 2022-2025 Triad National Security, LLC
  *                         All rights reserved.
  *
  * Copyright (c) 2022-2024 Inria
@@ -23,7 +23,6 @@
 #include "qvi-group-pthread.h"
 #include "qvi-scope.h"
 #include "qvi-utils.h"
-
 
 struct qvi_pthread_args_s {
     qv_scope_t *scope = nullptr;
@@ -87,7 +86,7 @@ qv_pthread_scope_split_at(
         return QV_ERR_INVLD_ARG;
     }
     try {
-        return scope->thsplit_at(
+        return scope->thread_split_at(
             type, color_array, nthreads, subscopes
         );
     }
@@ -130,7 +129,7 @@ qv_pthread_scopes_free(
         return QV_ERR_INVLD_ARG;
     }
     try {
-        qv_scope::thdestroy(&scopes, nscopes);
+        qv_scope::thread_destroy(&scopes, nscopes);
         return QV_SUCCESS;
     }
     qvi_catch_and_return();
@@ -144,13 +143,13 @@ qv_pthread_colors_fill(
    int stride,
    int nresources,
    int npieces
-){
+) {
     int rc = QV_SUCCESS;
 
-    if(stride < 1)
-        return QV_ERR_INVLD_ARG;
 
-    switch(policy){
+    if (stride < 1) return QV_ERR_INVLD_ARG;
+
+    switch(policy) {
     case QV_POLICY_SPREAD:
         {
             break;
@@ -187,7 +186,6 @@ qv_pthread_colors_fill(
             break;
         }
     }
-
     return rc;
 }
 
