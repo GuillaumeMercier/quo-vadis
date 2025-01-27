@@ -214,12 +214,14 @@ qvi_pthread_group::split(
 ) {
     qvi_pthread_group_t *ichild = nullptr;
 
-    fprintf(stdout,"[%i] ==============  pthread group split with color = %i, key = %i |  %s @ %i\n",qvi_gettid(),color, key, __FILE__,__LINE__);            
+    fprintf(stdout,"[%i] ==============  pthread group split with color = %i, key = %i |  %s @ %i\n",qvi_gettid(),color, key,
+            __FILE__,__LINE__);            
     
     qvi_subgroup_info sginfo;
     int rc = m_subgroup_info(color, key, &sginfo);
 
-    fprintf(stdout,"[%i] ==============  pthread group split with sginfo.size = %i, sginfo.rank = %i |  %s @ %i\n",qvi_gettid(), sginfo.size, sginfo.rank, __FILE__,__LINE__);            
+    fprintf(stdout,"[%i] ==============  pthread group split with sginfo.size = %i, sginfo.rank = %i |  %s @ %i\n",qvi_gettid(), sginfo.size, sginfo.rank,
+            __FILE__,__LINE__);            
 
     
     if (qvi_likely(rc == QV_SUCCESS)) {
