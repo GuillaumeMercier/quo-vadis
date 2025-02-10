@@ -1,19 +1,8 @@
 /* -*- Mode: C++; c-basic-offset:4; indent-tabs-mode:nil -*- */
-/*
- * Copyright (c) 2020-2024 Triad National Security, LLC
- *                         All rights reserved.
- *
- * Copyright (c) 2020-2021 Lawrence Livermore National Security, LLC
- *                         All rights reserved.
- *
- * This file is part of the quo-vadis project. See the LICENSE file at the
- * top-level directory of this distribution.
- */
 
 /**
  * @file test-rmi.cc
  */
-
 
 #include "quo-vadis.h"
 #include "qvi-utils.h"
@@ -29,13 +18,12 @@ server(
     char const *ers = NULL;
     const char *basedir = qvi_tmpdir();
     char *path = nullptr;
-    double start = qvi_time(), end;
-    qvi_rmi_config_s config;
+    qvi_rmi_config config;
 
-    qvi_rmi_server_t *server = NULL;
-    int rc = qvi_rmi_server_new(&server);
+    qvi_rmi_server *server = NULL;
+    int rc = qvi_new(&server);
     if (rc != QV_SUCCESS) {
-        ers = "qvi_rmi_server_new() failed";
+        ers = "qvi_new(&server) failed";
         goto out;
     }
 
@@ -71,22 +59,20 @@ server(
     config.hwtopo_path = std::string(path);
     free(path);
 
-    rc = qvi_rmi_server_config(server, &config);
+    rc = server->configure(config);
     if (rc != QV_SUCCESS) {
-        ers = "qvi_rmi_server_config() failed";
+        ers = "server->configure() failed";
         goto out;
     }
 
-    rc = qvi_rmi_server_start(server, false);
+    rc = server->start();
     if (rc != QV_SUCCESS) {
         ers = "qvi_rmi_server_start() failed";
         goto out;
     }
-    end = qvi_time();
-    printf("# [%d] Server Start Time %lf seconds\n", getpid(), end - start);
+    printf("# [%d] Server Started\n", getpid());
 out:
-    sleep(4);
-    qvi_rmi_server_delete(&server);
+    qvi_delete(&server);
     qvi_hwloc_delete(&hwloc);
     if (ers) {
         fprintf(stderr, "\n%s (rc=%d, %s)\n", ers, rc, qv_strerr(rc));
@@ -97,7 +83,8 @@ out:
 
 static int
 client(
-    const char *url
+    const char *url,
+    bool send_shutdown_msg
 ) {
     printf("# [%d] Starting Client (%s)\n", getpid(), url);
 
@@ -105,31 +92,36 @@ client(
     pid_t who = qvi_gettid();
     hwloc_bitmap_t bitmap = NULL;
 
-    qvi_rmi_client_t *client = NULL;
-    int rc = qvi_rmi_client_new(&client);
+    qvi_rmi_client *client = NULL;
+    int rc = qvi_new(&client);
     if (rc != QV_SUCCESS) {
-        ers = "qvi_rmi_client_new() failed";
+        ers = "qvi_new(&client) failed";
         goto out;
     }
 
-    rc = qvi_rmi_client_connect(client, url);
+    rc = client->connect(url);
     if (rc != QV_SUCCESS) {
-        ers = "qvi_rpc_client_connect() failed";
+        ers = "client->connect() failed";
         goto out;
     }
 
-    rc = qvi_rmi_cpubind(client, who, &bitmap);
+    rc = client->get_cpubind(who, &bitmap);
     if (rc != QV_SUCCESS) {
-        ers = "qvi_rmi_cpubind() failed";
+        ers = "client->cpubind() failed";
         goto out;
     }
+
     char *res;
     qvi_hwloc_bitmap_asprintf(bitmap, &res);
     printf("# [%d] cpubind = %s\n", who, res);
     hwloc_bitmap_free(bitmap);
     free(res);
+
+    if (send_shutdown_msg) {
+        rc = client->send_shutdown_message();
+    }
 out:
-    qvi_rmi_client_delete(&client);
+    qvi_delete(&client);
     if (ers) {
         fprintf(stderr, "\n%s (rc=%d, %s)\n", ers, rc, qv_strerr(rc));
         return 1;
@@ -160,7 +152,10 @@ main(
         rc = server(argv[1]);
     }
     else if (strcmp(argv[2], "-c") == 0) {
-        rc = client(argv[1]);
+        rc = client(argv[1], false);
+    }
+    else if (strcmp(argv[2], "-cc") == 0) {
+        rc = client(argv[1], true);
     }
     else {
         usage(argv[0]);

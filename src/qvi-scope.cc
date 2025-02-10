@@ -66,8 +66,8 @@ qv_scope::make_intrinsic(
     if (qvi_unlikely(rc != QV_SUCCESS)) return rc;
     // Get the requested intrinsic hardware pool.
     qvi_hwpool *hwpool = nullptr;
-    rc = qvi_rmi_get_intrinsic_hwpool(
-        group->task()->rmi(), qvi_task::mytid(), iscope, &hwpool
+    rc = group->task()->rmi()->get_intrinsic_hwpool(
+        qvi_task::mytid(), iscope, &hwpool
     );
     if (qvi_unlikely(rc != QV_SUCCESS)) return rc;
     // Create and initialize the scope.
@@ -100,10 +100,8 @@ qv_scope::create(
     }
     // Get the appropriate cpuset based on the caller's request.
     hwloc_cpuset_t cpuset = nullptr;
-    rc = qvi_rmi_get_cpuset_for_nobjs(
-        m_group->task()->rmi(),
-        m_hwpool->cpuset().cdata(),
-        type, nobjs, &cpuset
+    rc = m_group->task()->rmi()->get_cpuset_for_nobjs(
+        m_hwpool->cpuset().cdata(), type, nobjs, &cpuset
     );
     if (rc != QV_SUCCESS) {
         qvi_delete(&group);
@@ -237,7 +235,6 @@ qv_scope::split(
     );
     rc = chwsplit.split(&colorp, &hwpool);
     if (rc != QV_SUCCESS) goto out;
-
     // Split underlying group. Notice the use of colorp here.
 
     fprintf(stdout,"[%i]================ rank (key) = %i | color %i | colorp %i | group size =  %i | %s @ %i\n",
@@ -283,7 +280,7 @@ qv_scope::thread_split(
 ) {
     *thchildren = nullptr;
     const uint_t group_size = k;
-    // Split the hardware, get the hardare pools.
+    // Split the hardware, get the hardware pools.
     qvi_hwpool **hwpools = nullptr;
     int rc = qvi_hwsplit::thread_split(
         this, npieces, kcolors, k, maybe_obj_type, &hwpools
@@ -291,9 +288,9 @@ qv_scope::thread_split(
     if (rc != QV_SUCCESS) return rc;
     // Split off from our parent group. This call is called from a context in
     // which a process is splitting its resources across threads, so create a
-    // new thread group for each child.
+    // new thread group that will be shared with each child (see below).
     qvi_group *thgroup = nullptr;
-    rc = m_group->thsplit(group_size, &thgroup);
+    rc = m_group->thread_split(group_size, &thgroup);
     if (rc != QV_SUCCESS) return rc;
     // Now create and populate the children.
     qv_scope_t **ithchildren = new qv_scope_t *[group_size];
